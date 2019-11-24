@@ -54,11 +54,11 @@ mat_medians <- ddply(.data = mat_med,
 
 nrow(mat_medians)
 length(unique(mat_med$SYMBOL))
-write.table(mat_medians, "Norm_median.txt", sep="\t")
+write.table(mat_medians, "ExprsMat_GitHub.txt", sep="\t")
 
 ##OUTLIER ANALYSIS by 3D PCA
 library(rgl)
-matrix <-  read.table("Norm_median_clean.txt",header=TRUE, row.names=1, sep="\t")
+matrix <-  read.table("ExprsMat_GitHub.txt",header=TRUE, row.names=1, sep="\t")
 head(matrix)
 dim(matrix)
 
@@ -99,7 +99,7 @@ library(cluster)
 options(stringsAsFactors  =  FALSE)
 
 #DATA INPUT AND FILTERING
-M1 <- read.delim("Norm_median.txt", check.names=TRUE, stringsAsFactors=FALSE, row.names=1, header=TRUE)
+M1 <- read.delim("ExprsMat_GitHub.txt", check.names=TRUE, stringsAsFactors=FALSE, row.names=1, header=TRUE)
 colnames(M1) =names(M1)
 dataExpr0<-as.data.frame(t(M1))
 head(dataExpr0)
@@ -139,7 +139,7 @@ plotDendroAndColors(sampleTree,groupLabels=names(datColors), cex.dendroLabels = 
 colors=datColors,main="Clustergram and trait heatmap")
 
 
-M1 <- read.delim("Norm_median_clean.txt", check.names=TRUE, stringsAsFactors=FALSE, row.names=1, header=TRUE)
+M1 <- read.delim("ExprsMat_GitHub.txt", check.names=TRUE, stringsAsFactors=FALSE, row.names=1, header=TRUE)
 
 ###QUALITY CONTROL PLOTS
 par(mfrow=c(2,2))
@@ -162,7 +162,7 @@ library(doParallel)
 cl <- makeCluster(4)
 registerDoParallel(cl)
 
-exprsFile <- file.path("Norm_median_clean.txt") #load normalized matrix
+exprsFile <- file.path("ExprsMat_GitHub.txt") #load normalized matrix
 exprs <- as.matrix(read.table(exprsFile, header=TRUE, sep="\t", row.names=1, as.is=TRUE))
 dim(exprs)
 
@@ -177,17 +177,14 @@ plotVarPart(vp,label.angle=50)
 
 #####DIFFERENTIAL EXPRESSION ANALYSIS WITH LIMMA ######
 library(limma)
-exprs <- read.delim("Matrix.txt", check.names=FALSE, stringsAsFactors=FALSE, header=T, row.names=1)
+exprs <- read.delim("ExprsMat_GitHub.txt", check.names=FALSE, stringsAsFactors=FALSE, header=T, row.names=1)
 head(exprs)
 dim(exprs)
 
 targets <- read.delim("MetaData.txt", check.names=FALSE, stringsAsFactors=FALSE)
 head(targets)
-Group <- factor(targets$PTSD, levels=c("Case","Control"))
+Group <- factor(targets$Dx)
 Group
-design <- model.matrix(~0+Group)
-colnames(design) <- c("Case","Control")
-colnames(design)
 
 #Add covariates
 Nicotine <- factor(targets$Nicotine)
@@ -199,32 +196,32 @@ Chip <- (targets$Chip)
 RIN <- (targets$RIN)
 Batch <- factor(targets$Batch)
 
-design <- model.matrix(~Group+Nicotine+Alcohol+RIN+Batch+Gender+Delivery+Ethnicity)
+design <- model.matrix(~0+Group+Nicotine+Alcohol+RIN+Batch+Gender+Delivery+Ethnicity)
 colnames(design)
 
+
 fit <- lmFit(exprs, design)
-fit2 <- eBayes(fit)
-topTable(fit2, adjust="BH")
 
-Diff<- topTable(fit2, coef="GroupB", n=25000)
-write.table(Diff, file="DGE_result.txt", quote=FALSE, row.names=TRUE)
+cm <-makeContrasts(
+    TE = (GroupControlTE - GroupControl),
+    Dep = (GroupDepression - GroupControl),
+    PTSD = (GroupPTSD - GroupControl),
+    PTSDDep = (GroupPTSDDep - GroupControl),
+    levels=design)
 
-#create volcano plots of DGE signaturs
-plot(Diff$logFC, -log10(Diff$P.value))
+fit2 <- contrasts.fit(fit, cm)
+fitDupCor <- eBayes(fit2)
+topTable(fitDupCor, coef="TE")
+topTable(fitDupCor, coef="Dep")
+topTable(fitDupCor, coef="PTSD")
+topTable(fitDupCor, coef="PTSDDep")
 
-###QUALITY CONTROL PLOTS of DGE PC1 association with meta-data
-matrix <-  read.table("Norm_median_clean.txt",header=TRUE, row.names=1, sep="\t") # a matrix of DGE signatures only
-nSamples = ncol(matrix)
-tmatrix<-t(matrix)
-pcs<-prcomp(tmatrix)
-summary(pcs)
-PC1<-pcs$x[,1]
+DGE_TE<- topTable(fitDupCor, coef="TE", n=80000)
+write.table(DGE_TE, "DEG_TE.txt", sep="\t")
+DGE_Dep<- topTable(fitDupCor, coef="Dep", n=80000)
+write.table(DGE_Dep, "DEG_Dep.txt", sep="\t")
+DGE_PTSD<- topTable(fitDupCor, coef="PTSD", n=80000)
+write.table(DGE_PTSD, "DEG_PTSD.txt", sep="\t")
+DGE_PTSDDep<- topTable(fitDupCor, coef="PTSDDep", n=80000)
+write.table(DGE_PTSDDep, "DEG_PTSDDep.txt", sep="\t")
 
-#Load meta-data
-targets <- read.delim("MetaData.txt", stringsAsFactors=FALSE, row.names=1, header=TRUE, sep="\t")
-
-moduleTraitCor = cor(PC1, targets, use = "p")
-moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples) #requries library(WGCNA)
-targets <- read.delim("testing.txt", stringsAsFactors=FALSE, row.names=1, header=F, sep="\t")
-barplot((-log10(targets$V2)), horiz=T, las=1, col="white", cex.axis=0.7, cex=0.7, names.arg=rownames(targets))
-abline(v=-log10(0.05), col="red")
